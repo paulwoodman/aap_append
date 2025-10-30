@@ -1,0 +1,87 @@
+import os
+import re
+
+# Keys to prefix (string values)
+scalar_keys = ["name", "organization", "project", "inventory", "playbook"]
+
+# Keys to prefix list items
+list_keys = ["credentials"]
+
+file_key_map = {
+    "orgs.yaml": scalar_keys,
+    "projects.yaml": scalar_keys,
+    "teams.yaml": scalar_keys,
+    "schedules.yaml": scalar_keys,
+    "inventories.yaml": scalar_keys,
+    "job_templates.yaml": scalar_keys + list_keys,
+    "notification_templates.yaml": scalar_keys,
+    "workflow_job_templates.yaml": scalar_keys,
+}
+
+def process_yaml_file(filepath, prefix, scalar_keys, list_keys):
+    with open(filepath, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    updated_lines = []
+    lookup = {}
+    current_list_key = None
+    list_indent = None
+
+    # Regex for scalar key: value
+    scalar_pattern = re.compile(r'^(\s*)({keys})\s*:\s*(["\']?)(.*?)\3\s*$'.format(keys="|".join(scalar_keys)))
+    # Regex for list key:
+    list_pattern = re.compile(r'^(\s*)({keys})\s*:\s*$'.format(keys="|".join(list_keys)))
+    # Regex for list items:
+    list_item_pattern = re.compile(r'^(\s*)-\s*(["\']?)(.*?)\2\s*$')
+
+    for line in lines:
+        # Check if we are inside a list
+        if current_list_key:
+            m_item = list_item_pattern.match(line)
+            if m_item and len(m_item.groups()) == 3:
+                indent, quote, value = m_item.groups()
+                if not value.startswith(prefix):
+                    new_value = f"{prefix}{value}"
+                    lookup[value] = new_value
+                    line = f"{indent}- {quote}{new_value}{quote}\n"
+            else:
+                # End of list
+                current_list_key = None
+                list_indent = None
+
+        # Check scalar keys
+        m_scalar = scalar_pattern.match(line)
+        if m_scalar:
+            indent, key, quote, value = m_scalar.groups()
+            if not value.startswith(prefix):
+                new_value = f"{prefix}{value}"
+                lookup[value] = new_value
+                line = f"{indent}{key}: {quote}{new_value}{quote}\n"
+
+        # Check list keys
+        m_list = list_pattern.match(line)
+        if m_list:
+            current_list_key = m_list.group(2)
+            list_indent = len(m_list.group(1))
+
+        updated_lines.append(line)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.writelines(updated_lines)
+
+    print(f"✅ Processed: {os.path.basename(filepath)}")
+    if lookup:
+        print("  Changes made:")
+        for old, new in lookup.items():
+            print(f"   - {old} → {new}")
+    else:
+        print("  No changes detected.")
+
+if __name__ == "__main__":
+    prefix = input("Enter prefix to prepend (e.g., dev_): ").strip()
+
+    for filename, keys in file_key_map.items():
+        if os.path.exists(filename):
+            process_yaml_file(filename, prefix, scalar_keys, list_keys)
+        else:
+            print(f"⚠️ Skipping {filename} (not found)")
