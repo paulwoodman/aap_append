@@ -3,33 +3,30 @@ import os
 import re
 
 # -----------------------------
-# YAML Preprocessing
+# Preprocess YAML to avoid parsing errors
 # -----------------------------
-def preprocess_yaml_file(filepath):
+def preprocess_yaml_content(content):
     """
-    Fix common YAML syntax issues before loading:
-    - Quote any values starting with | or >
-    - Escape unescaped quotes inside values
+    Wrap strings containing special characters or HTML in triple quotes to avoid YAML ParserError.
     """
-    with open(filepath, "r") as f:
-        lines = f.readlines()
-
     new_lines = []
-    for line in lines:
-        # Quote values starting with | or >
-        if re.match(r'^\s*\w+\s*:\s*[|>]', line):
-            # Only add quotes if not already quoted
-            if not re.search(r':\s*["\']', line):
-                key, value = line.split(':', 1)
-                line = f'{key}: "{value.strip()}"\n'
-        
-        # Escape unescaped quotes inside values
-        if '"' in line and not line.strip().startswith('#'):
-            parts = line.split(':', 1)
-            if len(parts) == 2:
-                key, value = parts
-                value = value.replace('"', '\\"')
-                line = f'{key}: "{value.strip()}"\n'
+    for line in content.splitlines(keepends=True):
+        # Skip lines without colon (non-key lines)
+        if ":" not in line:
+            new_lines.append(line)
+            continue
+
+        key, value = line.split(":", 1)
+        stripped = value.strip()
+
+        if not stripped:
+            new_lines.append(line)
+            continue
+
+        # If value contains quotes, backslashes, HTML tags, or pipe characters
+        if re.search(r'["\\<>|]', stripped) or '\n' in stripped:
+            # Use triple quotes
+            line = f"{key}: '''{stripped}'''\n"
 
         new_lines.append(line)
 
@@ -39,6 +36,10 @@ def preprocess_yaml_file(filepath):
 # Recursive prefix function with lookup
 # -----------------------------
 def recursive_prefix_lookup(data, prefix, keys_to_prefix, lookup):
+    """
+    Recursively traverse YAML data, prepend prefix to specified keys,
+    and record changes in a lookup table.
+    """
     if isinstance(data, dict):
         new_data = {}
         for key, value in data.items():
@@ -88,12 +89,17 @@ def diff_dict(d1, d2, path=""):
 # Process a YAML file
 # -----------------------------
 def process_yaml_file(filepath, prefix, keys_to_prefix, lookup):
-    content = preprocess_yaml_file(filepath)
-    original_data = yaml.safe_load(content)
+    # Preprocess file to safely handle HTML/multiline/quotes
+    with open(filepath, "r") as f:
+        raw_content = f.read()
+
+    preprocessed_content = preprocess_yaml_content(raw_content)
+    original_data = yaml.safe_load(preprocessed_content)
 
     updated_data = recursive_prefix_lookup(original_data, prefix, keys_to_prefix, lookup)
     diffs = diff_dict(original_data, updated_data)
 
+    # Save updated YAML
     with open(filepath, "w") as f:
         yaml.safe_dump(updated_data, f, sort_keys=False)
 
@@ -110,8 +116,9 @@ def process_yaml_file(filepath, prefix, keys_to_prefix, lookup):
 # -----------------------------
 if __name__ == "__main__":
     prefix = input("Enter prefix to prepend (e.g., dev_): ").strip()
-    lookup_table = {}
+    lookup_table = {}  # Store old -> new mappings for reference
 
+    # Map filenames to the keys we want to prefix
     file_key_map = {
         "orgs.yaml": ["name"],
         "projects.yaml": ["name", "organization"],
@@ -127,7 +134,7 @@ if __name__ == "__main__":
         if os.path.exists(filename):
             process_yaml_file(filename, prefix, keys, lookup_table)
         else:
-            print(f"⚠️  Skipping {filename} (not found)")
+            print(f"⚠️ Skipping {filename} (not found)")
 
     print("\nLookup table (old -> new values):")
     for old, new in lookup_table.items():
