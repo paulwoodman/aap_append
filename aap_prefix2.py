@@ -3,7 +3,7 @@ import os
 import re
 
 # -----------------------------
-# Preprocess YAML content
+# YAML Preprocessing
 # -----------------------------
 def preprocess_yaml_file(filepath):
     """
@@ -12,17 +12,28 @@ def preprocess_yaml_file(filepath):
     - Escape unescaped quotes inside values
     """
     with open(filepath, "r") as f:
-        content = f.read()
+        lines = f.readlines()
 
-    # Quote values starting with | or >
-    pattern_pipe = re.compile(r'^(\s*\w+\s*:\s*)([|>].*)$', re.MULTILINE)
-    content = pattern_pipe.sub(r'\1"\2"', content)
+    new_lines = []
+    for line in lines:
+        # Quote values starting with | or >
+        if re.match(r'^\s*\w+\s*:\s*[|>]', line):
+            # Only add quotes if not already quoted
+            if not re.search(r':\s*["\']', line):
+                key, value = line.split(':', 1)
+                line = f'{key}: "{value.strip()}"\n'
+        
+        # Escape unescaped quotes inside values
+        if '"' in line and not line.strip().startswith('#'):
+            parts = line.split(':', 1)
+            if len(parts) == 2:
+                key, value = parts
+                value = value.replace('"', '\\"')
+                line = f'{key}: "{value.strip()}"\n'
 
-    # Escape unescaped quotes inside values
-    pattern_quotes = re.compile(r'^(\s*\w+\s*:\s*)(.*")([^"].*)$', re.MULTILINE)
-    content = pattern_quotes.sub(lambda m: f'{m.group(1)}"{m.group(2).replace("\"","\\\"")}{m.group(3)}"', content)
+        new_lines.append(line)
 
-    return content
+    return ''.join(new_lines)
 
 # -----------------------------
 # Recursive prefix function with lookup
@@ -99,7 +110,7 @@ def process_yaml_file(filepath, prefix, keys_to_prefix, lookup):
 # -----------------------------
 if __name__ == "__main__":
     prefix = input("Enter prefix to prepend (e.g., dev_): ").strip()
-    lookup_table = {}  # Store old -> new mappings
+    lookup_table = {}
 
     file_key_map = {
         "orgs.yaml": ["name"],
