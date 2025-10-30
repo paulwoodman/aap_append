@@ -1,3 +1,7 @@
-extra_vars:
-      parallel_executions: 2
-      models: |9200\|4010\|9130\|AXI
+yaml.parser.ParserError: while parsing a block mapping
+  in "<unicode string>", line 10632, column 7:
+          html_content: "<h1>Hi Team,</h1> ...
+          ^
+expected <block end>, but found '<scalar>'
+  in "<unicode string>", line 10632, column 51:
+     ... : "<h1>Hi Team,</h1><p style=\\"color:black\\">Please find the d ...
