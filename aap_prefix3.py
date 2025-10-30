@@ -1,5 +1,6 @@
 import yaml
 import os
+import re
 
 # Recursive prefix function with lookup
 def recursive_prefix_lookup(data, prefix, keys_to_prefix, lookup):
@@ -46,12 +47,27 @@ def diff_dict(d1, d2, path=""):
             changes.append((path, d1, d2))
     return changes
 
+# Preprocess YAML text to fix common parsing issues
+def preprocess_yaml_text(content):
+    # Fix double quotes inside strings by escaping
+    content = re.sub(r'(:\s*")([^"]*?)"', lambda m: f'{m.group(1)}{m.group(2).replace("\"","\\\"")}"', content)
+
+    # Fix block scalars missing indentation (models: |9200...)
+    content = re.sub(r'(\|\s*)([^\s])', lambda m: f'|\n  {m.group(2)}', content)
+
+    return content
+
 # Process a YAML file
 def process_yaml_file(filepath, prefix, keys_to_prefix, lookup):
-    # Load YAML safely without touching raw text
+    # Read and preprocess raw YAML text
     with open(filepath, "r") as f:
-        original_data = yaml.safe_load(f)
+        raw_content = f.read()
+    preprocessed_content = preprocess_yaml_text(raw_content)
 
+    # Load YAML safely
+    original_data = yaml.safe_load(preprocessed_content)
+
+    # Apply prefixing
     updated_data = recursive_prefix_lookup(original_data, prefix, keys_to_prefix, lookup)
     diffs = diff_dict(original_data, updated_data)
 
